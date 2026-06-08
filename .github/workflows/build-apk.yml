@@ -1,0 +1,61 @@
+name: Build Debug APK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Decode Keystore
+        run: |
+          mkdir -p config
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > config/debug_signing.jks
+
+      - name: Create config.properties
+        run: |
+          cat > config/config.properties << EOF
+          debug.storePassword=${{ secrets.KEYSTORE_PASSWORD }}
+          debug.keyAlias=${{ secrets.KEY_ALIAS }}
+          debug.keyPassword=${{ secrets.KEY_PASSWORD }}
+          EOF
+
+      - name: Disable Firebase plugin
+        run: |
+          sed -i 's|id("com.google.gms.google-services")|//id("com.google.gms.google-services")|g' app/build.gradle.kts
+
+      - name: Grant execute permission
+        run: chmod +x gradlew
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*') }}
+
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug --no-daemon
+        env:
+          GRADLE_OPTS: "-Xmx4g"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: 2fas-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          retention-days: 7
